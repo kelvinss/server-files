@@ -1,0 +1,123 @@
+#!/bin/bash
+set -e
+
+ip_pref="24"
+peers_base_path="./peers"
+peer_pubkey_file="./publickey"
+peer_prekey_file="./preshared"
+peer_ipaddr_file="./ipaddr"
+
+server_pubkey_file="./publickey"
+peer_pivkey_file="./privatekey"
+
+server_address="${server_address:-}"
+server_name_comment="server"
+ip_block="10.10.10.0/${ip_pref}"
+dns_address="10.10.10.1"
+
+# load environment vars from config file
+if [ -f "./wg-conf.env" ]; then
+    # shellcheck source=/dev/null
+    source "./wg-conf.env"
+fi
+
+function show_usage() {
+    echo 1>&2 "usage: $0 NAME IP"
+}
+
+function echoerr() {
+    echo 1>&2 "$@"
+}
+
+function check_var() {
+    local name="$1"
+    local contents="${!name}"
+    if [ -z "$contents" ]; then
+        echoerr "Missing variable '$name'."
+        exit 1
+    fi
+}
+
+# check variables
+check_var "server_address"
+check_var "server_name_comment"
+
+function show_usage_exit() {
+    local code="${1:-1}"
+    show_usage
+    exit "$code"
+}
+
+function firstln() {
+    head -n 1 | tr -d '\n'
+}
+
+if [ -z "$1" ]; then
+    echoerr "Missing NAME argument."
+    show_usage_exit 1
+else
+    name="$1"
+    shift
+fi
+if [ -z "$1" ]; then
+    echoerr "Missing IP argument."
+    show_usage_exit
+else
+    ipaddr="$1"
+    shift
+fi
+
+mkdir -p "${peers_base_path}"
+
+peer_path="${peers_base_path}/$name"
+
+if [ -d "${peer_path}" ] || [ -f "${peer_path}" ]; then
+    echoerr "${peer_path} already exists."
+    exit 1
+fi
+
+if [ ! -f "./publickey" ]; then
+    echoerr "Missing server public key file './publickey'."
+    exit 1
+else
+    server_pubkey="$(firstln <"${server_pubkey_file}")"
+fi
+
+mkdir -p "${peer_path}"
+
+(
+    set -e
+    cd "${peer_path}"
+
+    umask 177
+
+    echo "${ipaddr}" >"${peer_ipaddr_file}"
+
+    echoerr "Generating peer private key."
+    wg genkey >"${peer_pivkey_file}"
+    echoerr "Generating peer public key."
+    wg pubkey >"${peer_pubkey_file}" <"${peer_pivkey_file}"
+    echoerr "Generating peer preshared key."
+    wg genpsk >"./preshared"
+
+    pivkey=$(firstln <"${peer_pivkey_file}")
+    prekey=$(firstln <"${peer_prekey_file}")
+
+    peer_conf=""
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "# ${name}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "[Interface]"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "Address = ${ipaddr}/32"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "DNS = ${dns_address}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "PrivateKey = ${pivkey}"
+
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "# ${server_name_comment}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "Endpoint = ${server_address}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "AllowedIPs = ${ip_block}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "PublicKey = ${server_pubkey}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "PresharedKey = ${prekey}"
+
+    peer_conf_filename="wg0.conf"
+    echoerr "Writing config to '${peer_path}/${peer_conf_filename}'"
+    printf '%s' "${peer_conf}" >"${peer_conf_filename}"
+) ||
+    rm -r "${peer_path}"

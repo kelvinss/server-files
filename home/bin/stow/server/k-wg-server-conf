@@ -1,0 +1,89 @@
+#!/bin/bash
+set -e
+
+ip_pref="24"
+peers_base_path="./peers"
+peer_pubkey_file="./publickey"
+peer_prekey_file="./preshared"
+peer_ipaddr_file="./ipaddr"
+
+server_prikey_file="./privatekey"
+
+listen_port="51820"
+gateway_address="10.10.10.1"
+gateway_address_pref="${gateway_address}/${ip_pref}"
+
+# load environment vars from config file
+if [ -f "./wg-conf.env" ]; then
+    # shellcheck source=/dev/null
+    source "./wg-conf.env"
+fi
+
+function echoerr() {
+    echo 1>&2 "$@"
+}
+
+function check_var() {
+    local name="$1"
+    local contents="${!name}"
+    if [ -z "$contents" ]; then
+        echoerr "Missing variable '$name'."
+        exit 1
+    fi
+}
+
+function check_file() {
+    local path="$1"
+    if [ ! -f "$path" ]; then
+        echoerr "Missing file '$path'."
+        exit 1
+    fi
+}
+
+check_file "./privatekey"
+check_file "./publickey"
+
+function firstln() {
+    head -n 1 | tr -d '\n'
+}
+
+server_prikey=$(firstln <"${server_prikey_file}")
+
+server_conf=""
+printf -v server_conf $'%s%s\n' "${server_conf}" "[Interface]"
+printf -v server_conf $'%s%s\n' "${server_conf}" "Address = ${gateway_address_pref}"
+printf -v server_conf $'%s%s\n' "${server_conf}" "ListenPort = ${listen_port}"
+printf -v server_conf $'%s%s\n' "${server_conf}" "PrivateKey = ${server_prikey}"
+
+# printf -v wg_header '%s%s' "${wg_header}" $'
+# PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+# '
+
+printf -v server_conf '%s%s' "${server_conf}" $'
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT
+'
+
+mkdir -p "${peers_base_path}"
+
+for peer_path in "${peers_base_path}"/*; do
+    peer_name=$(basename "${peer_path}")
+
+    peer_pubkey=$(firstln <"${peer_path}/${peer_pubkey_file}")
+    peer_prekey=$(firstln <"${peer_path}/${peer_prekey_file}")
+    peer_ipaddr=$(firstln <"${peer_path}/${peer_ipaddr_file}")
+
+    peer_ipaddr_pref="${peer_ipaddr}/32"
+
+    # peer config
+    printf -v server_conf $'%s\n' "${server_conf}"
+    printf -v server_conf $'%s%s\n' "${server_conf}" "# ${peer_name}"
+    printf -v server_conf $'%s%s\n' "${server_conf}" "[Peer]"
+    printf -v server_conf $'%s%s\n' "${server_conf}" "AllowedIPs = ${peer_ipaddr_pref}"
+    printf -v server_conf $'%s%s\n' "${server_conf}" "PresharedKey = ${peer_prekey}"
+    printf -v server_conf $'%s%s\n' "${server_conf}" "PublicKey = ${peer_pubkey}"
+
+done
+
+printf "%s" "$server_conf"
