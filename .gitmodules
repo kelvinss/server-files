@@ -1,0 +1,3 @@
+[submodule "lib/duckdns-script"]
+	path = lib/duckdns-script
+	url = git@github.com:quleubers-enterprise/duckdns-script.git
