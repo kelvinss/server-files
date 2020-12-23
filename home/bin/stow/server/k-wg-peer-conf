@@ -111,6 +111,7 @@ mkdir -p "${peer_path}"
     printf -v peer_conf $'%s%s\n' "${peer_conf}" "PrivateKey = ${pivkey}"
 
     printf -v peer_conf $'%s%s\n' "${peer_conf}" "# ${server_name_comment}"
+    printf -v peer_conf $'%s%s\n' "${peer_conf}" "[Peer]"
     printf -v peer_conf $'%s%s\n' "${peer_conf}" "Endpoint = ${server_address}"
     printf -v peer_conf $'%s%s\n' "${peer_conf}" "AllowedIPs = ${ip_block}"
     printf -v peer_conf $'%s%s\n' "${peer_conf}" "PublicKey = ${server_pubkey}"
