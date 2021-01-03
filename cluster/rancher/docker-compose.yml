@@ -1,0 +1,22 @@
+version: '3.7'
+services:
+    rancher-server:
+        image: rancher/rancher:stable
+        container_name: rancher-server
+        privileged: true
+        restart: unless-stopped
+        volumes:
+            # SSL certificate and key
+            - /opt/ssl/_.cluster.kelvin-santos.com.crt:/etc/rancher/ssl/cert.pem
+            - /opt/ssl/_.cluster.kelvin-santos.com.key:/etc/rancher/ssl/key.pem
+            # Rancher data
+            - /opt/rancher:/var/lib/rancher
+        # hostname: racher.spectre.kelvin-santos.com
+        ports:
+            - "80:80"
+            - "443:443"
+            - "11080:80"
+            - "11443:443"
+            # - "10000-10999:10000-10999"
+        # command: --acme-domain racher.spectre.kelvin-santos.com
+        command: --no-cacerts
